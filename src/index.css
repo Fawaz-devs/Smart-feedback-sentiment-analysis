@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design system variables */
+@layer base {
+  :root {
+    --background: 245 60% 8%;
+    --foreground: 240 10% 98%;
+    --card: 240 20% 12%;
+    --card-foreground: 240 10% 98%;
+    --popover: 240 20% 10%;
+    --popover-foreground: 240 10% 98%;
+    --primary: 263 70% 60%;
+    --primary-foreground: 240 10% 98%;
+    --primary-glow: 270 80% 70%;
+    --secondary: 220 70% 55%;
+    --secondary-foreground: 240 10% 98%;
+    --muted: 240 20% 20%;
+    --muted-foreground: 240 10% 70%;
+    --accent: 280 85% 65%;
+    --accent-foreground: 240 10% 98%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 240 10% 98%;
+    --success: 142 76% 36%;
+    --warning: 38 92% 50%;
+    --info: 199 89% 48%;
+    --border: 240 20% 20%;
+    --input: 240 20% 15%;
+    --ring: 263 70% 60%;
+    --radius: 1rem;
+    --glass-bg: 240 20% 15%;
+    --glass-border: 240 30% 25%;
+  }
+
+  .dark {
+    --background: 245 60% 8%;
+    --foreground: 240 10% 98%;
+    --card: 240 20% 12%;
+    --card-foreground: 240 10% 98%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+  }
+
+  /* Optional: border utility */
+  .border-custom {
+    border-color: hsl(var(--border));
+  }
+}
