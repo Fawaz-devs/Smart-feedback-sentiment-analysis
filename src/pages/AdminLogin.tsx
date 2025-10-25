@@ -39,8 +39,13 @@ export default function AdminLogin() {
     e.preventDefault();
     setLoading(true);
     try {
+      console.log("Email:", email);
+      console.log("Password:", password);
       const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
+      if (error) {
+        console.error("Supabase sign-in error:", error);
+        throw error;
+      }
       if (!data.session) throw new Error("No session returned");
 
       const { data: roleData } = await supabase
@@ -86,6 +91,9 @@ export default function AdminLogin() {
           <Button type="submit" className="w-full bg-gradient-primary hover:opacity-90" disabled={loading}>
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Sign In
           </Button>
+          <p className="mt-4 text-sm text-center text-muted-foreground">
+            Don't have an account? <a href="/admin-signup" className="text-primary hover:underline">Sign up</a>
+          </p>
         </form>
       </GlassCard>
     </div>

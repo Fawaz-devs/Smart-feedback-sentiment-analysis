@@ -1,5 +1,5 @@
 import './testEnv';
-import { useEffect, useState, ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Toaster from "./components/ui/toaster";
 import { Toaster as Sonner } from "sonner";
@@ -13,6 +13,7 @@ import Dashboard from "./pages/Dashboard";
 import AdminLogin from "./pages/AdminLogin";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/Notfound";
+import AdminSignup from "./pages/AdminSignup";
 
 // Supabase client
 import { supabase } from "./integrations/supabase/client";
@@ -70,6 +71,7 @@ const App = () => {
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/admin-login" element={<AdminLogin />} />
+             <Route path="/admin-signup" element={<AdminSignup />} />
 
             {/* Protected */}
             <Route path="/dashboard" element={
