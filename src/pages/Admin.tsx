@@ -1,13 +1,13 @@
 import { useEffect, useState } from "react";
-import { Navbar } from "@/components/Navbar";
-import { GlassCard } from "@/components/Glasscard";
-import { SentimentBadge } from "@/components/SentimentBadge";
-import { supabase } from "@/integrations/supabase/client";
-import type { Session } from "@supabase/supabase-js";
+import { Navbar } from "../components/Navbar";
+import { GlassCard } from "../components/Glasscard";
+import { SentimentBadge } from "../components/SentimentBadge";
+import { supabase } from "../integrations/supabase/client";
+// import type { Session } from "../integrations/supabase/";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/Button";
 import { Trash2, Shield } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "../hooks/use-toast";
 
 interface Feedback {
   id: string;

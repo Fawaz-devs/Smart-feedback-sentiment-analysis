@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/Button";
 
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { GlassCard } from "@/components/GlassCard";
-import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/hooks/use-toast";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { GlassCard } from "../components/Glasscard";
+import { supabase } from "../integrations/supabase/client";
+import { useToast } from "../hooks/use-toast";
 import { Loader2 } from "lucide-react";
 
 
