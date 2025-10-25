@@ -1,12 +1,12 @@
 import { useState } from "react";
-import { Navbar } from "@/components/Navbar";
-import { GlassCard } from "@/components/GlassCard"; // Fixed casing
-import { Button } from "@/components/ui/Button";
-import { Textarea } from "@/components/ui/Textarea";
-import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { Navbar } from "../components/Navbar";
+import { GlassCard } from "../components/Glasscard"; // Fixed casing
+import { Button } from "../components/ui/Button";
+import { Textarea } from "../components/ui/Textarea";
+import { useToast } from "../hooks/use-toast";
+import { supabase } from "../integrations/supabase/client";
 import { Loader2, Sparkles, BarChart3, Shield, Zap } from "lucide-react";
-import { SentimentBadge } from "@/components/SentimentBadge";
+import { SentimentBadge } from "../components/SentimentBadge";
 
 const Index = () => {
   const [feedback, setFeedback] = useState("");

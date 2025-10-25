@@ -1,21 +1,21 @@
 import './testEnv';
 import { useEffect, useState, ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Toaster from "@/components/ui/Toaster";
+import Toaster from "./components/ui/toaster";
 import { Toaster as Sonner } from "sonner";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Pages
-import Index from "@/pages/Index";
-import Auth from "@/pages/Auth";
-import Dashboard from "@/pages/Dashboard";
-import AdminLogin from "@/pages/AdminLogin";
-import Admin from "@/pages/Admin";
-import NotFound from "@/pages/NotFound";
+import Index from "./pages/Index";
+import Auth from "./pages/Auth";
+import Dashboard from "./pages/Dashboard";
+import AdminLogin from "./pages/AdminLogin";
+import Admin from "./pages/Admin";
+import NotFound from "./pages/Notfound";
 
 // Supabase client
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "./integrations/supabase/client";
 
 const queryClient = new QueryClient();
 

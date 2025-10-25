@@ -1,9 +1,9 @@
 import { Link, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { Button } from "../components/ui/Button";
 import { MessageSquare, BarChart3, Shield, LogOut, User } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "../integrations/supabase/client";
 
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "../hooks/use-toast";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 

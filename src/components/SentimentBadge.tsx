@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "../lib/utils";
 import { Smile, Frown, Meh } from "lucide-react";
 
 interface SentimentBadgeProps {

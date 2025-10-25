@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { supabase } from "../integrations/supabase/client";
+import { Button } from "../components/ui/Button";
+import { useToast } from "../hooks/use-toast";
 import { LogOut, MessageSquare, Calendar } from "lucide-react";
-import { FeedbackForm } from "@/components/FeedbackForm";
-import { SentimentBadge } from "@/components/SentimentBadge";
+import { FeedbackForm } from "../components/FeedbackForm";
+import { SentimentBadge } from "../components/SentimentBadge";
 import { format } from "date-fns";
 
 interface Feedback {
