@@ -37,37 +37,57 @@ const UserDashboard = () => {
         const currentUser = session.user;
         setUser(currentUser);
 
-        // Check user role
-        const { data: roleData, error: roleError } = await supabase
-          .from("user_roles")
-          .select("role")
-          .eq("user_id", currentUser.id)
-          .maybeSingle();
+        // Check user role to ensure they're not an admin
+        try {
+          const { data: roleData, error: roleError } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", currentUser.id)
+            .eq("role", "admin")
+            .maybeSingle();
 
-        if (roleError) console.error("Role fetch error:", roleError);
+          if (roleError) {
+            console.warn("Role fetch error (not critical for users):", roleError);
+            // If there's an error checking role, treat as regular user
+          }
 
-        const role = roleData?.role ?? "user";
-        if (role === "admin") {
-          navigate("/admin-dashboard");
-          return;
+          // If user is admin, redirect to admin dashboard
+          if (roleData?.role === "admin") {
+            navigate("/admin-dashboard");
+            return;
+          }
+          // If no role data or not admin, continue as regular user
+        } catch (roleError) {
+          console.warn("Could not check user role, continuing as regular user:", roleError);
         }
 
-        // Fetch user's feedback
-        const { data: feedbackData, error: feedbackError } = await supabase
-          .from("feedback")
-          .select("*")
-          .eq("user_id", currentUser.id)
-          .order("created_at", { ascending: false });
+        // Fetch user's feedback (handle potential RLS issues)
+        // Limit to last 5 feedbacks
+        try {
+          const { data: feedbackData, error: feedbackError } = await supabase
+            .from("feedback")
+            .select("*")
+            .eq("user_id", currentUser.id)
+            .order("created_at", { ascending: false })
+            .limit(5);
 
-        if (feedbackError) console.error("Feedback fetch error:", feedbackError);
+          if (feedbackError) {
+            console.warn("Feedback fetch error:", feedbackError);
+            // This is not critical, so we continue with empty feedbacks
+          }
 
-        setFeedbacks(feedbackData || []);
+          setFeedbacks(feedbackData || []);
+        } catch (feedbackError) {
+          console.warn("Could not fetch user feedback:", feedbackError);
+          setFeedbacks([]);
+        }
       } catch (error: any) {
         toast({
           title: "Error",
           description: error.message || "Failed to fetch user data",
           variant: "destructive",
         });
+        navigate("/auth");
       } finally {
         setLoading(false);
       }
@@ -85,22 +105,60 @@ const UserDashboard = () => {
   }, [navigate, toast]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast({
-      title: "Logged out",
-      description: "You have been successfully logged out",
-    });
-    navigate("/auth");
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out",
+      });
+      navigate("/auth");
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to logout",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleRefresh = async () => {
     if (!user) return;
-    const { data: feedbackData } = await supabase
-      .from("feedback")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
-    setFeedbacks(feedbackData || []);
+    try {
+      // Limit to last 5 feedbacks
+      const { data: feedbackData, error } = await supabase
+        .from("feedback")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error("Refresh error:", error);
+        toast({
+          title: "Error",
+          description: "Could not refresh feedback data",
+          variant: "destructive",
+        });
+      } else {
+        setFeedbacks(feedbackData || []);
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to refresh feedback",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Calculate sentiment counts for statistics (based on all feedbacks, not just displayed ones)
+  const sentimentCounts = {
+    total: feedbacks.length,
+    positive: feedbacks.filter(f => f.sentiment === 'positive').length,
+    neutral: feedbacks.filter(f => f.sentiment === 'neutral').length,
+    negative: feedbacks.filter(f => f.sentiment === 'negative').length
   };
 
   if (loading) {
@@ -145,13 +203,16 @@ const UserDashboard = () => {
           <div className="glass-card p-6 rounded-2xl">
             <h2 className="text-xl font-semibold mb-4">Your Statistics</h2>
             <div className="space-y-4">
-              {["Total", "Positive", "Neutral", "Negative"].map((label) => (
-                <div key={label} className="flex justify-between items-center">
-                  <span className="text-muted-foreground">{label} Feedback</span>
-                  <span className="text-2xl font-bold text-primary">
-                    {label === "Total"
-                      ? feedbacks.length
-                      : feedbacks.filter(f => f.sentiment.toLowerCase() === label.toLowerCase()).length}
+              {[
+                { label: "Total", value: sentimentCounts.total, color: "text-primary" },
+                { label: "Positive", value: sentimentCounts.positive, color: "text-green-500" },
+                { label: "Neutral", value: sentimentCounts.neutral, color: "text-gray-500" },
+                { label: "Negative", value: sentimentCounts.negative, color: "text-red-500" }
+              ].map((item) => (
+                <div key={item.label} className="flex justify-between items-center">
+                  <span className="text-muted-foreground">{item.label} Feedback</span>
+                  <span className={`text-2xl font-bold ${item.color}`}>
+                    {item.value}
                   </span>
                 </div>
               ))}
@@ -159,9 +220,9 @@ const UserDashboard = () => {
           </div>
         </div>
 
-        {/* Feedback History */}
+        {/* Feedback History - Show only last 5 feedbacks */}
         <div className="glass-card p-6 rounded-2xl mt-8">
-          <h2 className="text-xl font-semibold mb-4">Your Feedback History</h2>
+          <h2 className="text-xl font-semibold mb-4">Your Recent Feedback</h2>
           {feedbacks.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
               No feedback submitted yet. Share your thoughts above!

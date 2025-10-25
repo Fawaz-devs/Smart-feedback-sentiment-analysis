@@ -14,6 +14,8 @@ import AdminLogin from "./pages/AdminLogin";
 import Admin from "./pages/Admin";
 import NotFound from "./pages/Notfound";
 import AdminSignup from "./pages/AdminSignup";
+import DatabaseSetup from "./pages/DatabaseSetup";
+import MigrationHelper from "./pages/MigrationHelper";
 
 // Supabase client
 import { supabase } from "./integrations/supabase/client";
@@ -28,10 +30,30 @@ const ProtectedRoute = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     const checkSession = async () => {
       const { data } = await supabase.auth.getSession();
-      if (data?.session) setAuthenticated(true);
+      if (data?.session) {
+        setAuthenticated(true);
+      } else {
+        setAuthenticated(false);
+      }
       setLoading(false);
     };
     checkSession();
+
+    // Listen for auth state changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        setAuthenticated(true);
+      } else {
+        setAuthenticated(false);
+      }
+      setLoading(false);
+    });
+
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   if (loading) {
@@ -71,7 +93,9 @@ const App = () => {
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="/admin-login" element={<AdminLogin />} />
-             <Route path="/admin-signup" element={<AdminSignup />} />
+            <Route path="/admin-signup" element={<AdminSignup />} />
+            <Route path="/database-setup" element={<DatabaseSetup />} />
+            <Route path="/migration-helper" element={<MigrationHelper />} />
 
             {/* Protected */}
             <Route path="/dashboard" element={

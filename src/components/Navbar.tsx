@@ -12,58 +12,96 @@ export const Navbar = () => {
   const { toast } = useToast();
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   // Fetch current session and subscribe
   useEffect(() => {
     const getSession = async () => {
-      const { data } = await supabase.auth.getSession();
-      setSession(data.session);
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) {
+          console.error("Error getting session:", error.message);
+          setSession(null);
+        } else {
+          setSession(data.session);
+        }
+      } catch (err) {
+        console.error("Unexpected error getting session:", err);
+        setSession(null);
+      } finally {
+        setLoading(false);
+      }
     };
 
     getSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
+      setLoading(false);
+
+      // When session changes, recheck admin status
+      if (newSession) {
+        checkAdminStatus(newSession);
+      } else {
+        setIsAdmin(false);
+      }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      if (subscription) {
+        subscription.unsubscribe();
+      }
+    };
   }, []);
 
   // Check if user is admin
-  useEffect(() => {
-    const checkAdminStatus = async () => {
-      if (!session?.user) {
-        setIsAdmin(false);
-        return;
-      }
+  const checkAdminStatus = async (userSession: Session | null) => {
+    if (!userSession?.user) {
+      setIsAdmin(false);
+      return;
+    }
 
+    try {
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
-        .eq("user_id", session.user.id)
+        .eq("user_id", userSession.user.id)
         .eq("role", "admin")
         .maybeSingle();
 
-      if (error) console.error("Error checking admin role:", error.message);
-
-      setIsAdmin(!!data);
-    };
-
-    checkAdminStatus();
-  }, [session]);
+      if (error) {
+        console.error("Error checking admin role:", error.message);
+        setIsAdmin(false);
+      } else {
+        setIsAdmin(!!data);
+      }
+    } catch (err) {
+      console.error("Unexpected error checking admin role:", err);
+      setIsAdmin(false);
+    }
+  };
 
   const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Signed out successfully",
+          description: "You have been logged out.",
+        });
+        setIsAdmin(false);
+      }
+    } catch (err) {
       toast({
         title: "Error",
-        description: error.message,
+        description: "An unexpected error occurred during sign out.",
         variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Signed out successfully",
-        description: "You have been logged out.",
       });
     }
   };
@@ -74,6 +112,27 @@ export const Navbar = () => {
     ...(session && !isAdmin ? [{ href: "/dashboard", label: "Dashboard", icon: BarChart3 }] : []),
     ...(session && isAdmin ? [{ href: "/admin-dashboard", label: "Admin Panel", icon: Shield }] : []),
   ];
+
+  // Show loading state
+  if (loading) {
+    return (
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-glass">
+        <div className="absolute inset-0 bg-card/40 border-b border-glass-border/50" />
+        <div className="container relative mx-auto px-4">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-gradient-primary animate-pulse" />
+              <div className="h-6 w-24 bg-muted animate-pulse rounded" />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+              <div className="h-8 w-20 bg-muted animate-pulse rounded" />
+            </div>
+          </div>
+        </div>
+      </nav>
+    );
+  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-glass">
@@ -122,11 +181,13 @@ export const Navbar = () => {
               </>
             ) : (
               <>
+                {/* Clearly labeled as User Sign In */}
                 <Link to="/auth">
-                  <Button variant="default">Sign In</Button>
+                  <Button variant="default">User Sign In</Button>
                 </Link>
+                {/* Admin button is separate and clearly labeled */}
                 <Link to="/admin-login">
-                  <Button variant="default">Admin</Button>
+                  <Button variant="outline">Admin Login</Button>
                 </Link>
               </>
             )}

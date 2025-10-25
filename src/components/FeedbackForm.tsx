@@ -5,7 +5,7 @@ import { useToast } from "../hooks/use-toast";
 import { supabase } from "../integrations/supabase/client";
 
 import { Loader2, Send } from "lucide-react";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 
 const feedbackSchema = z.object({
   content: z.string()
@@ -13,6 +13,80 @@ const feedbackSchema = z.object({
     .min(10, "Feedback must be at least 10 characters")
     .max(1000, "Feedback must be less than 1000 characters"),
 });
+
+// Enhanced sentiment analysis function as a fallback
+const analyzeSentimentFallback = (text: string) => {
+  const positiveWords = [
+    'good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'pleased', 'satisfied', 'awesome',
+    'brilliant', 'outstanding', 'superb', 'perfect', 'incredible', 'marvelous', 'terrific', 'fabulous', 'splendid', 'magnificent',
+    'delighted', 'thrilled', 'ecstatic', 'joyful', 'cheerful', 'content', 'grateful', 'appreciate', 'recommend', 'best'
+  ];
+
+  const negativeWords = [
+    'bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'angry', 'frustrated', 'disappointed', 'sad', 'annoyed', 'upset',
+    'worst', 'useless', 'worthless', 'pathetic', 'disgusting', 'ridiculous', 'stupid', 'idiotic', 'furious', 'enraged', 'livid',
+    'displeased', 'dissatisfied', 'unhappy', 'miserable', 'depressed', 'gloomy', 'grim', 'bleak', 'hopeless', 'desperate',
+    'failed', 'failure', 'broken', 'defective', 'faulty', 'problem', 'issue', 'complaint', 'dislike', 'hate', 'loathe'
+  ];
+
+  const textLower = text.toLowerCase();
+  let positiveScore = 0;
+  let negativeScore = 0;
+
+  // Count positive words
+  positiveWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'g');
+    const matches = textLower.match(regex);
+    if (matches) {
+      positiveScore += matches.length;
+    }
+  });
+
+  // Count negative words
+  negativeWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'g');
+    const matches = textLower.match(regex);
+    if (matches) {
+      negativeScore += matches.length;
+    }
+  });
+
+  // Handle strong negative phrases
+  const strongNegativePhrases = [
+    'not good', 'not great', 'not happy', 'not satisfied', 'not pleased',
+    'very bad', 'really terrible', 'extremely awful', 'absolutely horrible',
+    'completely disappointed', 'totally frustrated', 'extremely upset'
+  ];
+
+  strongNegativePhrases.forEach(phrase => {
+    if (textLower.includes(phrase)) {
+      negativeScore += 2; // Give extra weight to strong negative phrases
+    }
+  });
+
+  // Calculate sentiment
+  const totalScore = positiveScore + negativeScore;
+
+  if (totalScore === 0) {
+    // If no sentiment words found, check for exclamation marks as a fallback
+    const exclamationCount = (text.match(/!/g) || []).length;
+    if (exclamationCount > 2) {
+      // Multiple exclamation marks might indicate strong emotion
+      return { sentiment: 'neutral', score: 0.5 };
+    }
+    return { sentiment: 'neutral', score: 0.5 };
+  }
+
+  const sentimentScore = positiveScore / totalScore;
+
+  if (sentimentScore > 0.6) {
+    return { sentiment: 'positive', score: Math.min(0.9, sentimentScore + 0.1) };
+  } else if (sentimentScore < 0.4) {
+    return { sentiment: 'negative', score: Math.max(0.1, sentimentScore - 0.1) };
+  } else {
+    return { sentiment: 'neutral', score: sentimentScore };
+  }
+};
 
 interface FeedbackFormProps {
   onSuccess?: () => void;
@@ -30,20 +104,37 @@ export const FeedbackForm = ({ onSuccess }: FeedbackFormProps) => {
       const validated = feedbackSchema.parse({ content });
       setIsSubmitting(true);
 
-      // Call edge function for sentiment analysis
-      const { data: sentimentData, error: sentimentError } = await supabase.functions.invoke(
-        "analyze-sentiment",
-        {
-          body: { text: validated.content },
-        }
-      );
+      // Try to call edge function for sentiment analysis
+      let sentimentData;
+      try {
+        const { data, error: sentimentError } = await supabase.functions.invoke(
+          "analyze-sentiment",
+          {
+            body: { text: validated.content },
+          }
+        );
 
-      if (sentimentError) throw sentimentError;
+        if (sentimentError) {
+          console.warn("Sentiment analysis error, using fallback:", sentimentError);
+          // Use fallback sentiment analysis
+          sentimentData = analyzeSentimentFallback(validated.content);
+        } else if (data.error) {
+          console.warn("Sentiment analysis returned error, using fallback:", data.error);
+          // Use fallback sentiment analysis
+          sentimentData = analyzeSentimentFallback(validated.content);
+        } else {
+          sentimentData = data;
+        }
+      } catch (error) {
+        console.warn("Failed to call sentiment analysis function, using fallback:", error);
+        // Use fallback sentiment analysis
+        sentimentData = analyzeSentimentFallback(validated.content);
+      }
 
       // Get current user (may be null for guests)
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Insert feedback
+      // Insert feedback with sentiment analysis results
       const { error: insertError } = await supabase
         .from("feedback")
         .insert({
@@ -53,7 +144,10 @@ export const FeedbackForm = ({ onSuccess }: FeedbackFormProps) => {
           sentiment_score: sentimentData.score,
         });
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error("Insert error:", insertError);
+        throw new Error(`Failed to save feedback: ${insertError.message}`);
+      }
 
       toast({
         title: "Feedback submitted!",
@@ -63,16 +157,23 @@ export const FeedbackForm = ({ onSuccess }: FeedbackFormProps) => {
       setContent("");
       onSuccess?.();
     } catch (error) {
-      if (error instanceof z.ZodError) {
+      if (error instanceof ZodError) {
+        // Safely access the first error message
+        const firstError = error.issues[0];
+        const errorMessage = firstError?.message || "Validation failed";
+
         toast({
           title: "Validation Error",
-          description: error.errors[0].message,
+          description: errorMessage,
           variant: "destructive",
         });
       } else {
+        const errorMessage = error instanceof Error ? error.message : "Failed to submit feedback. Please try again.";
+        console.error("Feedback submission error:", error);
+
         toast({
           title: "Error",
-          description: "Failed to submit feedback. Please try again.",
+          description: errorMessage,
           variant: "destructive",
         });
       }

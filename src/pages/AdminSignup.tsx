@@ -18,6 +18,41 @@ export default function AdminSignup() {
   const handleAdminSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+
+    // Validate input
+    if (!email || !password) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter both email and password",
+        variant: "destructive"
+      });
+      setLoading(false);
+      return;
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid email address",
+        variant: "destructive"
+      });
+      setLoading(false);
+      return;
+    }
+
+    // Validate password length
+    if (password.length < 6) {
+      toast({
+        title: "Validation Error",
+        description: "Password must be at least 6 characters",
+        variant: "destructive"
+      });
+      setLoading(false);
+      return;
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -32,7 +67,19 @@ export default function AdminSignup() {
       });
       navigate("/admin-login");
     } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      console.error("Signup error:", error);
+      let errorMessage = error.message || "An unknown error occurred";
+
+      // Provide more specific error messages
+      if (errorMessage.includes("already registered")) {
+        errorMessage = "An account with this email already exists. Please try logging in instead.";
+      }
+
+      toast({
+        title: "Signup Failed",
+        description: errorMessage,
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
     }
@@ -86,6 +133,9 @@ export default function AdminSignup() {
             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
             Sign Up
           </Button>
+          <p className="mt-4 text-sm text-center text-muted-foreground">
+            Already have an account? <a href="/admin-login" className="text-primary hover:underline">Sign in</a>
+          </p>
         </form>
       </GlassCard>
     </div>

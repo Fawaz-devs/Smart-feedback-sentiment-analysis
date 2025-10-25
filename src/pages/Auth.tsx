@@ -1,182 +1,211 @@
-import { useEffect, useState } from "react";
-import { Navbar } from "../components/Navbar";
+import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { GlassCard } from "../components/Glasscard";
-import { SentimentBadge } from "../components/SentimentBadge";
-import { supabase } from "../integrations/supabase/client";
-// import type { Session } from "../integrations/supabase/";
-import { useNavigate } from "react-router-dom";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Button } from "../components/ui/Button";
-import { Trash2, Shield } from "lucide-react";
+import { supabase } from "../integrations/supabase/client";
 import { useToast } from "../hooks/use-toast";
+import { Loader2, LogIn, UserPlus } from "lucide-react";
 
-interface Feedback {
-  id: string;
-  content: string;
-  sentiment: "positive" | "negative" | "neutral";
-  sentiment_score: number;
-  created_at: string;
-  user_id: string | null;
-}
-
-export default function Admin() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
-  const [isAdmin, setIsAdmin] = useState(false);
+const Auth = () => {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [showAdminError, setShowAdminError] = useState(false); // New state to track admin error
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // Check if user is already logged in
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          // Check if user is admin
+          const { data: roleData, error: roleError } = await supabase
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", session.user.id)
+            .eq("role", "admin")
+            .maybeSingle();
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (!session) {
-        navigate("/auth");
-      }
-    });
+          if (roleError) {
+            console.error("Role check error:", roleError);
+            // If there's an error checking role, treat as regular user
+            navigate("/dashboard");
+            return;
+          }
 
-    return () => subscription.unsubscribe();
+          if (roleData?.role === "admin") {
+            // Admins cannot access user login page - show error and sign out
+            toast({
+              title: "Access Denied",
+              description: "Admins cannot access the user login page. Please use the Admin Login page.",
+              variant: "destructive",
+            });
+            setShowAdminError(true); // Show the red warning
+            // Sign out admin and stay on this page to show the error
+            await supabase.auth.signOut();
+          } else {
+            // Regular user or user with no role
+            navigate("/dashboard");
+          }
+        }
+      } catch (error) {
+        console.error("Session check error:", error);
+        // If there's any error, redirect to dashboard as regular user
+        navigate("/dashboard");
+      }
+    };
+    checkSession();
   }, [navigate]);
 
-  useEffect(() => {
-    const checkAdminAndLoad = async () => {
-      if (!session?.user) return;
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setShowAdminError(false); // Reset admin error state
 
-      const { data } = await supabase
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", session.user.id)
-        .eq("role", "admin")
-        .maybeSingle();
-
-      if (!data) {
-        toast({
-          title: "Access Denied",
-          description: "You don't have admin privileges.",
-          variant: "destructive",
+    try {
+      if (isSignUp) {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
         });
-        navigate("/");
-        return;
+        if (error) throw error;
+
+        toast({
+          title: "Signup Successful!",
+          description: "Please check your email to confirm your registration.",
+        });
+        setIsSignUp(false);
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (error) throw error;
+
+        // Check if user is admin
+        const { data: roleData, error: roleError } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", data.user.id)
+          .eq("role", "admin")
+          .maybeSingle();
+
+        if (roleError) {
+          console.error("Role check error:", roleError);
+          // If there's an error checking role, treat as regular user
+          toast({ title: "Welcome!", description: "You are now logged in." });
+          navigate("/dashboard");
+          return;
+        }
+
+        if (roleData?.role === "admin") {
+          // Admins cannot access user login page - show error and sign out
+          toast({
+            title: "Access Denied",
+            description: "Admins cannot access the user login page. Please use the Admin Login page.",
+            variant: "destructive",
+          });
+          setShowAdminError(true); // Show the red warning
+          await supabase.auth.signOut(); // Sign out the admin user
+          // Stay on this page to show the error message
+        } else {
+          toast({ title: "Welcome!", description: "You are now logged in." });
+          navigate("/dashboard");
+        }
       }
-
-      setIsAdmin(true);
-      loadFeedbacks();
-    };
-
-    checkAdminAndLoad();
-  }, [session, navigate, toast]);
-
-  const loadFeedbacks = async () => {
-    const { data, error } = await supabase
-      .from("feedback")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error("Error loading feedbacks:", error);
+    } catch (error: any) {
+      console.error("Auth error:", error);
       toast({
         title: "Error",
-        description: "Failed to load feedback data.",
+        description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
-    } else {
-      setFeedbacks((data || []) as Feedback[]);
+    } finally {
+      setLoading(false);
     }
   };
-
-  const handleDelete = async (id: string) => {
-    const { error } = await supabase.from("feedback").delete().eq("id", id);
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete feedback.",
-        variant: "destructive",
-      });
-    } else {
-      toast({
-        title: "Success",
-        description: "Feedback deleted successfully.",
-      });
-      loadFeedbacks();
-    }
-  };
-
-  if (!isAdmin) {
-    return null;
-  }
 
   return (
-    <div className="min-h-screen bg-gradient-hero">
-      <Navbar />
-
+    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4 relative">
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-40 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl" />
+        <div className="absolute top-20 left-20 w-72 h-72 bg-primary/20 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-secondary/20 rounded-full blur-3xl" />
       </div>
-
-      <main className="container mx-auto px-4 pt-24 pb-12 relative z-10">
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-2">
-            <Shield className="w-8 h-8 text-primary" />
-            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              Admin Panel
-            </h1>
-          </div>
+      <GlassCard className="w-full max-w-md relative z-10 p-6">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-2">
+            {isSignUp ? "Create Account" : "Welcome Back"}
+          </h1>
           <p className="text-muted-foreground">
-            Manage and moderate all feedback submissions
+            {isSignUp ? "Create an account to track your feedback" : "Sign in to your account"}
           </p>
-        </div>
-
-        <GlassCard>
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-semibold">All Feedback</h2>
-            <div className="text-sm text-muted-foreground">
-              Total: {feedbacks.length} submissions
+          {/* Show red warning only when an admin tries to access this page */}
+          {showAdminError && (
+            <div className="mt-3 p-3 bg-destructive/10 rounded-lg">
+              <p className="text-sm text-destructive font-medium">
+                ⚠️ Access Denied: Admins cannot access the user login page. Please use the Admin Login page.
+              </p>
             </div>
+          )}
+        </div>
+        <form onSubmit={handleAuth} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              placeholder="user@example.com"
+              className="bg-input/50 backdrop-blur-sm"
+            />
           </div>
-
-          <div className="space-y-4">
-            {feedbacks.map((feedback) => (
-              <div
-                key={feedback.id}
-                className="p-4 rounded-xl bg-card/30 border border-glass-border/30 hover:bg-card/40 transition-colors"
-              >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <SentimentBadge
-                      sentiment={feedback.sentiment}
-                      score={feedback.sentiment_score}
-                    />
-                    <span className="text-xs text-muted-foreground">
-                      {new Date(feedback.created_at).toLocaleString()}
-                    </span>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(feedback.id)}
-                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
-                </div>
-                <p className="text-foreground mb-2">{feedback.content}</p>
-                <div className="text-xs text-muted-foreground">
-                  User ID: {feedback.user_id || "Anonymous"}
-                </div>
-              </div>
-            ))}
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              placeholder="••••••••"
+              className="bg-input/50 backdrop-blur-sm"
+            />
           </div>
-        </GlassCard>
-      </main>
+          <Button
+            type="submit"
+            className="w-full bg-gradient-primary hover:opacity-90"
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : isSignUp ? (
+              <UserPlus className="mr-2 h-4 w-4" />
+            ) : (
+              <LogIn className="mr-2 h-4 w-4" />
+            )}
+            {isSignUp ? "Sign Up" : "Sign In"}
+          </Button>
+        </form>
+        <div className="mt-4 text-center text-sm">
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-primary hover:underline"
+          >
+            {isSignUp
+              ? "Already have an account? Sign In"
+              : "Don't have an account? Sign Up"}
+          </button>
+        </div>
+      </GlassCard>
     </div>
   );
-}
+};
+
+export default Auth;

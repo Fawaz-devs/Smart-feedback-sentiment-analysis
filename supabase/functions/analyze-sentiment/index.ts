@@ -1,28 +1,67 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 serve(async (req) => {
+  // Handle preflight OPTIONS request
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, {
+      status: 204,
+      headers: {
+        ...corsHeaders,
+        'Access-Control-Max-Age': '86400', // 24 hours
+      }
+    });
+  }
+
+  // Only allow POST requests
+  if (req.method !== 'POST') {
+    return new Response(
+      JSON.stringify({ error: 'Method not allowed' }),
+      {
+        status: 405,
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
   }
 
   try {
-    const { content } = await req.json();
-    console.log('Analyzing sentiment for:', content);
+    const { text } = await req.json();
+    console.log('Analyzing sentiment for:', text);
 
-    if (!content || typeof content !== 'string') {
-      throw new Error('Invalid content provided');
+    if (!text || typeof text !== 'string') {
+      return new Response(
+        JSON.stringify({ error: 'Invalid text provided' }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured');
+      return new Response(
+        JSON.stringify({ error: 'LOVABLE_API_KEY is not configured' }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     // Call Lovable AI for sentiment analysis
@@ -41,7 +80,7 @@ serve(async (req) => {
           },
           {
             role: 'user',
-            content: `Analyze the sentiment of this feedback: "${content}"`
+            content: `Analyze the sentiment of this feedback: "${text}"`
           }
         ],
       }),
@@ -50,22 +89,43 @@ serve(async (req) => {
     if (!aiResponse.ok) {
       const errorText = await aiResponse.text();
       console.error('AI gateway error:', aiResponse.status, errorText);
-      
+
       if (aiResponse.status === 429) {
         return new Response(
           JSON.stringify({ error: 'Rate limit exceeded. Please try again later.' }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          {
+            status: 429,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          }
         );
       }
-      
+
       if (aiResponse.status === 402) {
         return new Response(
           JSON.stringify({ error: 'AI service quota exceeded. Please contact support.' }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          {
+            status: 402,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json'
+            }
+          }
         );
       }
-      
-      throw new Error(`AI gateway error: ${aiResponse.status}`);
+
+      return new Response(
+        JSON.stringify({ error: `AI gateway error: ${aiResponse.status}` }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     const aiData = await aiResponse.json();
@@ -73,7 +133,16 @@ serve(async (req) => {
 
     const aiContent = aiData.choices?.[0]?.message?.content;
     if (!aiContent) {
-      throw new Error('No content in AI response');
+      return new Response(
+        JSON.stringify({ error: 'No content in AI response' }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     // Parse the AI response
@@ -88,68 +157,60 @@ serve(async (req) => {
       }
     } catch (e) {
       console.error('Failed to parse AI response:', aiContent);
-      throw new Error('Failed to parse sentiment analysis');
+      return new Response(
+        JSON.stringify({ error: 'Failed to parse sentiment analysis' }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     // Validate the analysis structure
     if (!analysis.sentiment || !['positive', 'negative', 'neutral'].includes(analysis.sentiment)) {
-      throw new Error('Invalid sentiment in analysis');
+      return new Response(
+        JSON.stringify({ error: 'Invalid sentiment in analysis' }),
+        {
+          status: 500,
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
     }
 
     const sentimentScore = parseFloat(analysis.score) || 0.5;
-
-    // Store feedback in database
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
-    );
-
-    const { data: userData } = await supabaseClient.auth.getUser();
-    
-    const { data: feedback, error: insertError } = await supabaseClient
-      .from('feedback')
-      .insert({
-        content,
-        sentiment: analysis.sentiment,
-        sentiment_score: sentimentScore,
-        user_id: userData.user?.id || null,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      console.error('Database error:', insertError);
-      throw new Error(`Failed to store feedback: ${insertError.message}`);
-    }
-
-    console.log('Feedback stored successfully:', feedback);
 
     return new Response(
       JSON.stringify({
         sentiment: analysis.sentiment,
         score: sentimentScore,
         confidence: analysis.confidence || 0.8,
-        feedback_id: feedback.id,
       }),
       {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
       }
     );
   } catch (error) {
     console.error('Error in analyze-sentiment function:', error);
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error occurred',
         details: 'Failed to analyze sentiment'
       }),
       {
         status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: {
+          ...corsHeaders,
+          'Content-Type': 'application/json'
+        },
       }
     );
   }
