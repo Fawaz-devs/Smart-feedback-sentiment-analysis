@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { MessageSquare, BarChart3, Shield, LogOut, User } from "lucide-react";
-import { supabase } from "@/lib/supabase"; // ✅ Use the single client
+import { supabase } from "@/integrations/supabase/client";
+
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
@@ -12,25 +13,23 @@ export const Navbar = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Fetch current session and subscribe
   useEffect(() => {
-    // ✅ Fetch the current session on mount
-    supabase.auth.getSession().then(({ data }) => {
+    const getSession = async () => {
+      const { data } = await supabase.auth.getSession();
       setSession(data.session);
-    });
-
-    // ✅ Correct way to subscribe in Supabase v2
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    // ✅ Cleanup subscription
-    return () => {
-      subscription.unsubscribe();
     };
+
+    getSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, newSession) => {
+      setSession(newSession);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  // Check if user is admin
   useEffect(() => {
     const checkAdminStatus = async () => {
       if (!session?.user) {
@@ -38,12 +37,14 @@ export const Navbar = () => {
         return;
       }
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", session.user.id)
         .eq("role", "admin")
         .maybeSingle();
+
+      if (error) console.error("Error checking admin role:", error.message);
 
       setIsAdmin(!!data);
     };
@@ -52,17 +53,26 @@ export const Navbar = () => {
   }, [session]);
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    toast({
-      title: "Signed out successfully",
-      description: "You have been logged out.",
-    });
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Signed out successfully",
+        description: "You have been logged out.",
+      });
+    }
   };
 
+  // Nav links based on role
   const navLinks = [
     { href: "/", label: "Home", icon: MessageSquare },
-    { href: "/dashboard", label: "Dashboard", icon: BarChart3 },
-    ...(isAdmin ? [{ href: "/admin", label: "Admin", icon: Shield }] : []),
+    ...(session && !isAdmin ? [{ href: "/dashboard", label: "Dashboard", icon: BarChart3 }] : []),
+    ...(session && isAdmin ? [{ href: "/admin-dashboard", label: "Admin Panel", icon: Shield }] : []),
   ];
 
   return (
@@ -80,7 +90,7 @@ export const Navbar = () => {
             </span>
           </Link>
 
-          {/* Nav Links */}
+          {/* Navigation Links */}
           <div className="flex items-center gap-1">
             {navLinks.map(({ href, label, icon: Icon }) => {
               const isActive = location.pathname === href;
@@ -98,7 +108,7 @@ export const Navbar = () => {
             })}
           </div>
 
-          {/* Auth Buttons */}
+          {/* Auth buttons */}
           <div className="flex items-center gap-2">
             {session ? (
               <>
@@ -111,9 +121,14 @@ export const Navbar = () => {
                 </Button>
               </>
             ) : (
-              <Link to="/auth">
-                <Button variant="default">Sign In</Button>
-              </Link>
+              <>
+                <Link to="/auth">
+                  <Button variant="default">Sign In</Button>
+                </Link>
+                <Link to="/admin-login">
+                  <Button variant="default">Admin</Button>
+                </Link>
+              </>
             )}
           </div>
         </div>

@@ -1,7 +1,6 @@
-// src/pages/Index.tsx
 import { useState } from "react";
 import { Navbar } from "@/components/Navbar";
-import { GlassCard } from "@/components/Glasscard";
+import { GlassCard } from "@/components/GlassCard"; // Fixed casing
 import { Button } from "@/components/ui/Button";
 import { Textarea } from "@/components/ui/Textarea";
 import { useToast } from "@/hooks/use-toast";
@@ -64,26 +63,10 @@ const Index = () => {
   };
 
   const features = [
-    {
-      icon: Sparkles,
-      title: "AI-Powered Analysis",
-      description: "Advanced sentiment detection using state-of-the-art AI models",
-    },
-    {
-      icon: BarChart3,
-      title: "Visual Analytics",
-      description: "Beautiful charts and insights from your feedback data",
-    },
-    {
-      icon: Shield,
-      title: "Secure & Private",
-      description: "Your data is protected with enterprise-grade security",
-    },
-    {
-      icon: Zap,
-      title: "Real-Time Processing",
-      description: "Instant sentiment analysis as you submit feedback",
-    },
+    { icon: Sparkles, title: "AI-Powered Analysis", description: "Advanced sentiment detection using state-of-the-art AI models" },
+    { icon: BarChart3, title: "Visual Analytics", description: "Beautiful charts and insights from your feedback data" },
+    { icon: Shield, title: "Secure & Private", description: "Your data is protected with enterprise-grade security" },
+    { icon: Zap, title: "Real-Time Processing", description: "Instant sentiment analysis as you submit feedback" },
   ];
 
   return (
@@ -93,10 +76,7 @@ const Index = () => {
       {/* Animated background blobs */}
       <div className="absolute inset-0 overflow-hidden -z-10">
         <div className="absolute top-20 left-20 w-96 h-96 bg-primary/20 rounded-full blur-3xl animate-pulse" />
-        <div
-          className="absolute bottom-20 right-20 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-pulse"
-          style={{ animationDelay: "1s" }}
-        />
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-secondary/20 rounded-full blur-3xl animate-pulse" style={{ animationDelay: "1s" }} />
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-accent/10 rounded-full blur-3xl" />
       </div>
 
@@ -107,15 +87,12 @@ const Index = () => {
             <span className="text-sm font-medium text-primary">Powered by AI</span>
           </div>
           <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight">
-            <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">
-              Smart Feedback
-            </span>
+            <span className="bg-gradient-to-r from-primary via-secondary to-accent bg-clip-text text-transparent">Smart Feedback</span>
             <br />
             <span className="text-foreground">Analysis System</span>
           </h1>
           <p className="text-xl text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Share your thoughts and let our AI analyze the sentiment in real-time.
-            Get instant insights with beautiful visualizations.
+            Share your thoughts and let our AI analyze the sentiment in real-time. Get instant insights with beautiful visualizations.
           </p>
         </div>
 
@@ -124,9 +101,7 @@ const Index = () => {
           <GlassCard className="shadow-glow">
             <form onSubmit={handleSubmit} className="space-y-6">
               <div>
-                <label className="text-lg font-semibold mb-3 block">
-                  Share Your Feedback
-                </label>
+                <label className="text-lg font-semibold mb-3 block">Share Your Feedback</label>
                 <Textarea
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
@@ -143,13 +118,11 @@ const Index = () => {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Analyzing...
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Analyzing...
                   </>
                 ) : (
                   <>
-                    <Sparkles className="mr-2 h-5 w-5" />
-                    Analyze Sentiment
+                    <Sparkles className="mr-2 h-5 w-5" /> Analyze Sentiment
                   </>
                 )}
               </Button>
@@ -167,10 +140,7 @@ const Index = () => {
         {/* Features Grid */}
         <div className="max-w-6xl mx-auto">
           <h2 className="text-3xl font-bold text-center mb-12">
-            Why Choose{" "}
-            <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
-              FeedbackAI
-            </span>
+            Why Choose <span className="bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">FeedbackAI</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {features.map((feature, index) => {
@@ -178,10 +148,8 @@ const Index = () => {
               return (
                 <GlassCard
                   key={index}
-                  className="text-center p-6 border border-glass-border transition-all duration-300
-                             hover:shadow-[0_0_20px_rgba(86,98,160,0.7)] hover:border-transparent"
+                  className="text-center p-6 border border-glass-border transition-all duration-300 hover:shadow-[0_0_20px_rgba(86,98,160,0.7)] hover:border-transparent"
                 >
-                  {/* Icon with same gradient background as FeedbackAI text */}
                   <div className="w-12 h-12 mx-auto mb-4 rounded-xl bg-gradient-to-r from-primary via-secondary to-accent flex items-center justify-center shadow-glow">
                     <Icon className="w-6 h-6 text-white" />
                   </div>

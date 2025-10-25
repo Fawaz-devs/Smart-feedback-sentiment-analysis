@@ -1,114 +1,133 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GlassCard } from "@/components/GlassCard";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { Loader2, MessageSquare } from "lucide-react";
+import { z } from "zod";
 
+const authSchema = z.object({
+  email: z.string().email("Invalid email address").max(255),
+  password: z.string().min(6, "Password must be at least 6 characters").max(100),
+});
 
-export default function Auth() {
+const Auth = () => {
+  const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
+  // Check existing session on mount
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        navigate("/");
+    const checkSession = async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error("Error fetching session:", sessionError);
+          return;
+        }
+        if (sessionData?.session) {
+          console.log("Existing session found, navigating to dashboard");
+          navigate("/dashboard");
+        }
+      } catch (err) {
+        console.error("Unexpected error during session check:", err);
       }
-    });
+    };
+    checkSession();
   }, [navigate]);
 
-  const handleAuth = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
+      const validated = authSchema.parse({ email, password });
+      setIsLoading(true);
+
+      if (isLogin) {
+        // Sign in user
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email: validated.email,
+          password: validated.password,
+        });
+
+        if (signInError) {
+          if (signInError.message.includes("Invalid login credentials")) {
+            throw new Error("Invalid email or password");
+          }
+          throw signInError;
+        }
+
+        // Fetch session after login
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
+        if (!sessionData?.session) throw new Error("Failed to establish session");
+
+        console.log("Login successful, navigating to dashboard...");
+        toast({
+          title: "Welcome back!",
+          description: "Successfully logged in",
+        });
+        navigate("/dashboard");
+      } else {
+        // Sign up user
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: validated.email,
+          password: validated.password,
           options: {
-            data: { full_name: fullName },
-            emailRedirectTo: `${window.location.origin}/`,
+            emailRedirectTo: `${window.location.origin}/dashboard`,
           },
         });
 
-        if (error) throw error;
+        if (signUpError) {
+          if (signUpError.message.includes("already registered")) {
+            throw new Error("Email already registered. Please login instead.");
+          }
+          throw signUpError;
+        }
 
         toast({
           title: "Account created!",
-          description: "You can now sign in with your credentials.",
+          description: "You can now login",
         });
-        setIsSignUp(false);
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) throw error;
-
-        toast({
-          title: "Welcome back!",
-          description: "You've successfully signed in.",
-        });
-        navigate("/");
+        setIsLogin(true);
       }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Validation Error",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else if (error instanceof Error) {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-hero flex items-center justify-center p-4">
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-20 left-20 w-72 h-72 bg-primary/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 right-20 w-96 h-96 bg-secondary/20 rounded-full blur-3xl" />
-      </div>
-
-      <GlassCard className="w-full max-w-md relative z-10">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent mb-2">
-            {isSignUp ? "Create Account" : "Welcome Back"}
-          </h1>
-          <p className="text-muted-foreground">
-            {isSignUp
-              ? "Join us and start sharing your feedback"
-              : "Sign in to continue to FeedbackAI"}
-          </p>
+    <div className="min-h-screen flex items-center justify-center p-4">
+      <div className="glass-card w-full max-w-md p-8 rounded-2xl animate-fade-in">
+        <div className="flex items-center justify-center mb-8">
+          <MessageSquare className="h-12 w-12 text-primary mr-2" />
+          <h1 className="text-3xl font-bold gradient-text">FeedbackAI</h1>
         </div>
 
-        <form onSubmit={handleAuth} className="space-y-4">
-          {isSignUp && (
-            <div className="space-y-2">
-              <Label htmlFor="fullName">Full Name</Label>
-              <Input
-                id="fullName"
-                type="text"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                required
-                placeholder="John Doe"
-                className="bg-input/50 backdrop-blur-sm"
-              />
-            </div>
-          )}
+        <h2 className="text-2xl font-semibold text-center mb-6">
+          {isLogin ? "Welcome Back" : "Create Account"}
+        </h2>
 
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -116,9 +135,9 @@ export default function Auth() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              required
+              className="glass-input"
               placeholder="you@example.com"
-              className="bg-input/50 backdrop-blur-sm"
+              required
             />
           </div>
 
@@ -129,33 +148,46 @@ export default function Auth() {
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              required
+              className="glass-input"
               placeholder="••••••••"
-              className="bg-input/50 backdrop-blur-sm"
+              required
             />
           </div>
 
-          <Button
-            type="submit"
-            className="w-full bg-gradient-primary hover:opacity-90"
-            disabled={loading}
-          >
-            {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isSignUp ? "Sign Up" : "Sign In"}
+          <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
+            {isLoading ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>{isLogin ? "Sign In" : "Sign Up"}</>
+            )}
           </Button>
         </form>
 
         <div className="mt-6 text-center">
           <button
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={() => setIsLogin(!isLogin)}
+            className="text-sm text-primary hover:underline"
           >
-            {isSignUp
-              ? "Already have an account? Sign in"
-              : "Don't have an account? Sign up"}
+            {isLogin
+              ? "Don't have an account? Sign up"
+              : "Already have an account? Sign in"}
           </button>
         </div>
-      </GlassCard>
+
+        <div className="mt-4 text-center">
+          <button
+            onClick={() => navigate("/")}
+            className="text-sm text-muted-foreground hover:text-foreground"
+          >
+            Back to Home
+          </button>
+        </div>
+      </div>
     </div>
   );
-}
+};
+
+export default Auth;

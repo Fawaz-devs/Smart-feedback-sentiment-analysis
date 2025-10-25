@@ -1,40 +1,61 @@
 import './testEnv';
-import { useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import Toaster from "./components/ui/toaster"; // default import
+import { useEffect, useState, ReactNode } from "react";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import Toaster from "@/components/ui/Toaster";
 import { Toaster as Sonner } from "sonner";
 import { TooltipProvider } from "@radix-ui/react-tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Pages
-import Index from "./pages/Index";
-import Auth from "./pages/Auth";
-import Dashboard from "./pages/Dashboard";
-import Admin from "./pages/Admin";
-import NotFound from "./pages/NotFound";
+import Index from "@/pages/Index";
+import Auth from "@/pages/Auth";
+import Dashboard from "@/pages/Dashboard";
+import AdminLogin from "@/pages/AdminLogin";
+import Admin from "@/pages/Admin";
+import NotFound from "@/pages/NotFound";
 
 // Supabase client
-import { supabase } from "./lib/supabase"; // Ensure this path is correct
+import { supabase } from "@/integrations/supabase/client";
 
 const queryClient = new QueryClient();
 
-const App = () => {
+// ProtectedRoute component
+const ProtectedRoute = ({ children }: { children: ReactNode }) => {
+  const [loading, setLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+
   useEffect(() => {
     const checkSession = async () => {
-      if (!supabase) return; // Safeguard
+      const { data } = await supabase.auth.getSession();
+      if (data?.session) setAuthenticated(true);
+      setLoading(false);
+    };
+    checkSession();
+  }, []);
 
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  return authenticated ? <>{children}</> : <Navigate to="/auth" replace />;
+};
+
+const App = () => {
+  useEffect(() => {
+    // Optional: Log current session for debugging
+    const checkSession = async () => {
       try {
         const { data, error } = await supabase.auth.getSession();
-        if (error) {
-          console.error("❌ Supabase session error:", error.message);
-        } else {
-          console.log("✅ Supabase session:", data.session);
-        }
+        if (error) console.error("❌ Supabase session error:", error.message);
+        else console.log("✅ Supabase session:", data.session);
       } catch (err) {
         console.error("❌ Unexpected error:", err);
       }
     };
-
     checkSession();
   }, []);
 
@@ -45,18 +66,27 @@ const App = () => {
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public */}
             <Route path="/" element={<Index />} />
             <Route path="/auth" element={<Auth />} />
-            <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/admin" element={<Admin />} />
+            <Route path="/admin-login" element={<AdminLogin />} />
+
+            {/* Protected */}
+            <Route path="/dashboard" element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin-dashboard" element={
+              <ProtectedRoute>
+                <Admin />
+              </ProtectedRoute>
+            } />
+
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
-
-        {/* Example div with custom border */}
-        <div className="border border-custom p-4 rounded-lg m-4 text-center">
-          This div uses the custom border color from CSS variable.
-        </div>
       </TooltipProvider>
     </QueryClientProvider>
   );
