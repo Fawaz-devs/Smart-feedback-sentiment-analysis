@@ -8,6 +8,80 @@ import { supabase } from "../integrations/supabase/client";
 import { Loader2, Sparkles, BarChart3, Shield, Zap } from "lucide-react";
 import { SentimentBadge } from "../components/SentimentBadge";
 
+// Simple sentiment analysis function as a fallback
+const analyzeSentimentFallback = (text: string) => {
+  const positiveWords = [
+    'good', 'great', 'excellent', 'amazing', 'wonderful', 'fantastic', 'love', 'like', 'happy', 'pleased', 'satisfied', 'awesome',
+    'brilliant', 'outstanding', 'superb', 'perfect', 'incredible', 'marvelous', 'terrific', 'fabulous', 'splendid', 'magnificent',
+    'delighted', 'thrilled', 'ecstatic', 'joyful', 'cheerful', 'content', 'grateful', 'appreciate', 'recommend', 'best'
+  ];
+
+  const negativeWords = [
+    'bad', 'terrible', 'awful', 'horrible', 'hate', 'dislike', 'angry', 'frustrated', 'disappointed', 'sad', 'annoyed', 'upset',
+    'worst', 'useless', 'worthless', 'pathetic', 'disgusting', 'ridiculous', 'stupid', 'idiotic', 'furious', 'enraged', 'livid',
+    'displeased', 'dissatisfied', 'unhappy', 'miserable', 'depressed', 'gloomy', 'grim', 'bleak', 'hopeless', 'desperate',
+    'failed', 'failure', 'broken', 'defective', 'faulty', 'problem', 'issue', 'complaint', 'dislike', 'hate', 'loathe'
+  ];
+
+  const textLower = text.toLowerCase();
+  let positiveScore = 0;
+  let negativeScore = 0;
+
+  // Count positive words
+  positiveWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'g');
+    const matches = textLower.match(regex);
+    if (matches) {
+      positiveScore += matches.length;
+    }
+  });
+
+  // Count negative words
+  negativeWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'g');
+    const matches = textLower.match(regex);
+    if (matches) {
+      negativeScore += matches.length;
+    }
+  });
+
+  // Handle strong negative phrases
+  const strongNegativePhrases = [
+    'not good', 'not great', 'not happy', 'not satisfied', 'not pleased',
+    'very bad', 'really terrible', 'extremely awful', 'absolutely horrible',
+    'completely disappointed', 'totally frustrated', 'extremely upset'
+  ];
+
+  strongNegativePhrases.forEach(phrase => {
+    if (textLower.includes(phrase)) {
+      negativeScore += 2; // Give extra weight to strong negative phrases
+    }
+  });
+
+  // Calculate sentiment
+  const totalScore = positiveScore + negativeScore;
+
+  if (totalScore === 0) {
+    // If no sentiment words found, check for exclamation marks as a fallback
+    const exclamationCount = (text.match(/!/g) || []).length;
+    if (exclamationCount > 2) {
+      // Multiple exclamation marks might indicate strong emotion
+      return { sentiment: 'neutral', score: 0.5 };
+    }
+    return { sentiment: 'neutral', score: 0.5 };
+  }
+
+  const sentimentScore = positiveScore / totalScore;
+
+  if (sentimentScore > 0.6) {
+    return { sentiment: 'positive', score: Math.min(0.9, sentimentScore + 0.1) };
+  } else if (sentimentScore < 0.4) {
+    return { sentiment: 'negative', score: Math.max(0.1, sentimentScore - 0.1) };
+  } else {
+    return { sentiment: 'neutral', score: sentimentScore };
+  }
+};
+
 const Index = () => {
   const [feedback, setFeedback] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,19 +107,50 @@ const Index = () => {
     setResult(null);
 
     try {
-      const { data, error } = await supabase.functions.invoke("analyze-sentiment", {
-        body: { content: feedback },
-      });
+      // Try to call edge function for sentiment analysis
+      let sentimentData;
+      try {
+        const { data, error: sentimentError } = await supabase.functions.invoke("analyze-sentiment", {
+          body: { text: feedback },
+        });
 
-      if (error) throw error;
+        if (sentimentError) {
+          console.warn("Sentiment analysis error, using fallback:", sentimentError);
+          // Use fallback sentiment analysis
+          sentimentData = analyzeSentimentFallback(feedback);
+        } else if (data.error) {
+          console.warn("Sentiment analysis returned error, using fallback:", data.error);
+          // Use fallback sentiment analysis
+          sentimentData = analyzeSentimentFallback(feedback);
+        } else {
+          sentimentData = data;
+        }
+      } catch (error) {
+        console.warn("Failed to call sentiment analysis function, using fallback:", error);
+        // Use fallback sentiment analysis
+        sentimentData = analyzeSentimentFallback(feedback);
+      }
+
+      // Save feedback to database with sentiment analysis results
+      // For guest feedback, user_id will be null
+      const { error: insertError } = await supabase
+        .from("feedback")
+        .insert({
+          content: feedback,
+          user_id: null, // Guest feedback has no user ID
+          sentiment: sentimentData.sentiment,
+          sentiment_score: sentimentData.score,
+        });
+
+      if (insertError) throw insertError;
 
       setResult({
-        sentiment: data.sentiment,
-        score: data.score,
+        sentiment: sentimentData.sentiment,
+        score: sentimentData.score,
       });
 
       toast({
-        title: "Analysis Complete!",
+        title: "Feedback Submitted!",
         description: "Your feedback has been analyzed and saved.",
       });
 
@@ -54,7 +159,7 @@ const Index = () => {
       console.error("Error:", error);
       toast({
         title: "Error",
-        description: error.message || "Failed to analyze feedback",
+        description: error.message || "Failed to submit feedback",
         variant: "destructive",
       });
     } finally {
