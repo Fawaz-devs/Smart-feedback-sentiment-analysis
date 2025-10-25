@@ -1,193 +1,182 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Navbar } from "../components/Navbar";
+import { GlassCard } from "../components/Glasscard";
+import { SentimentBadge } from "../components/SentimentBadge";
+import { supabase } from "../integrations/supabase/client";
+// import type { Session } from "../integrations/supabase/";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
-import { Loader2, MessageSquare } from "lucide-react";
-import { z } from "zod";
+import { Button } from "../components/ui/Button";
+import { Trash2, Shield } from "lucide-react";
+import { useToast } from "../hooks/use-toast";
 
-const authSchema = z.object({
-  email: z.string().email("Invalid email address").max(255),
-  password: z.string().min(6, "Password must be at least 6 characters").max(100),
-});
+interface Feedback {
+  id: string;
+  content: string;
+  sentiment: "positive" | "negative" | "neutral";
+  sentiment_score: number;
+  created_at: string;
+  user_id: string | null;
+}
 
-const Auth = () => {
-  const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
+export default function Admin() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
   const navigate = useNavigate();
+  const { toast } = useToast();
 
-  // Check existing session on mount
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) {
-          console.error("Error fetching session:", sessionError);
-          return;
-        }
-        if (sessionData?.session) {
-          console.log("Existing session found, navigating to dashboard");
-          navigate("/dashboard");
-        }
-      } catch (err) {
-        console.error("Unexpected error during session check:", err);
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (!session) {
+        navigate("/auth");
       }
-    };
-    checkSession();
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (!session) {
+        navigate("/auth");
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    const checkAdminAndLoad = async () => {
+      if (!session?.user) return;
 
-    try {
-      const validated = authSchema.parse({ email, password });
-      setIsLoading(true);
+      const { data } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
 
-      if (isLogin) {
-        // Sign in user
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email: validated.email,
-          password: validated.password,
-        });
-
-        if (signInError) {
-          if (signInError.message.includes("Invalid login credentials")) {
-            throw new Error("Invalid email or password");
-          }
-          throw signInError;
-        }
-
-        // Fetch session after login
-        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
-        if (sessionError) throw sessionError;
-        if (!sessionData?.session) throw new Error("Failed to establish session");
-
-        console.log("Login successful, navigating to dashboard...");
+      if (!data) {
         toast({
-          title: "Welcome back!",
-          description: "Successfully logged in",
-        });
-        navigate("/dashboard");
-      } else {
-        // Sign up user
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: validated.email,
-          password: validated.password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/dashboard`,
-          },
-        });
-
-        if (signUpError) {
-          if (signUpError.message.includes("already registered")) {
-            throw new Error("Email already registered. Please login instead.");
-          }
-          throw signUpError;
-        }
-
-        toast({
-          title: "Account created!",
-          description: "You can now login",
-        });
-        setIsLogin(true);
-      }
-    } catch (error) {
-      if (error instanceof z.ZodError) {
-        toast({
-          title: "Validation Error",
-          description: error.errors[0].message,
+          title: "Access Denied",
+          description: "You don't have admin privileges.",
           variant: "destructive",
         });
-      } else if (error instanceof Error) {
-        toast({
-          title: "Error",
-          description: error.message,
-          variant: "destructive",
-        });
+        navigate("/");
+        return;
       }
-    } finally {
-      setIsLoading(false);
+
+      setIsAdmin(true);
+      loadFeedbacks();
+    };
+
+    checkAdminAndLoad();
+  }, [session, navigate, toast]);
+
+  const loadFeedbacks = async () => {
+    const { data, error } = await supabase
+      .from("feedback")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error loading feedbacks:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load feedback data.",
+        variant: "destructive",
+      });
+    } else {
+      setFeedbacks((data || []) as Feedback[]);
     }
   };
 
+  const handleDelete = async (id: string) => {
+    const { error } = await supabase.from("feedback").delete().eq("id", id);
+
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete feedback.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Success",
+        description: "Feedback deleted successfully.",
+      });
+      loadFeedbacks();
+    }
+  };
+
+  if (!isAdmin) {
+    return null;
+  }
+
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="glass-card w-full max-w-md p-8 rounded-2xl animate-fade-in">
-        <div className="flex items-center justify-center mb-8">
-          <MessageSquare className="h-12 w-12 text-primary mr-2" />
-          <h1 className="text-3xl font-bold gradient-text">FeedbackAI</h1>
-        </div>
+    <div className="min-h-screen bg-gradient-hero">
+      <Navbar />
 
-        <h2 className="text-2xl font-semibold text-center mb-6">
-          {isLogin ? "Welcome Back" : "Create Account"}
-        </h2>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="glass-input"
-              placeholder="you@example.com"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="glass-input"
-              placeholder="••••••••"
-              required
-            />
-          </div>
-
-          <Button type="submit" className="w-full bg-primary hover:bg-primary/90" disabled={isLoading}>
-            {isLoading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Processing...
-              </>
-            ) : (
-              <>{isLogin ? "Sign In" : "Sign Up"}</>
-            )}
-          </Button>
-        </form>
-
-        <div className="mt-6 text-center">
-          <button
-            onClick={() => setIsLogin(!isLogin)}
-            className="text-sm text-primary hover:underline"
-          >
-            {isLogin
-              ? "Don't have an account? Sign up"
-              : "Already have an account? Sign in"}
-          </button>
-        </div>
-
-        <div className="mt-4 text-center">
-          <button
-            onClick={() => navigate("/")}
-            className="text-sm text-muted-foreground hover:text-foreground"
-          >
-            Back to Home
-          </button>
-        </div>
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-40 left-20 w-96 h-96 bg-primary/10 rounded-full blur-3xl" />
+        <div className="absolute bottom-20 right-20 w-96 h-96 bg-secondary/10 rounded-full blur-3xl" />
       </div>
+
+      <main className="container mx-auto px-4 pt-24 pb-12 relative z-10">
+        <div className="mb-8">
+          <div className="flex items-center gap-3 mb-2">
+            <Shield className="w-8 h-8 text-primary" />
+            <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+              Admin Panel
+            </h1>
+          </div>
+          <p className="text-muted-foreground">
+            Manage and moderate all feedback submissions
+          </p>
+        </div>
+
+        <GlassCard>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-semibold">All Feedback</h2>
+            <div className="text-sm text-muted-foreground">
+              Total: {feedbacks.length} submissions
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {feedbacks.map((feedback) => (
+              <div
+                key={feedback.id}
+                className="p-4 rounded-xl bg-card/30 border border-glass-border/30 hover:bg-card/40 transition-colors"
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-3">
+                    <SentimentBadge
+                      sentiment={feedback.sentiment}
+                      score={feedback.sentiment_score}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      {new Date(feedback.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => handleDelete(feedback.id)}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-foreground mb-2">{feedback.content}</p>
+                <div className="text-xs text-muted-foreground">
+                  User ID: {feedback.user_id || "Anonymous"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
+      </main>
     </div>
   );
-};
-
-export default Auth;
+}
